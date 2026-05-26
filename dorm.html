@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate"/>
+<title>Dorm App</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800;900&display=swap');
+*{font-family:'Prompt',sans-serif;-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:#f8faff;display:flex;flex-direction:column}
+
+/* ── App Shell ── */
+#app-header{flex-shrink:0}
+#app-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px}
+#app-nav{position:fixed;bottom:0;left:0;right:0;z-index:50}
+
+/* ── Bottom Nav ── */
+.nav-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;gap:3px;cursor:pointer;transition:all .2s;color:#94a3b8;border:none;background:none}
+.nav-tab.active{color:#4f46e5}
+.nav-tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav-tab .nav-label{font-size:10px;font-weight:700}
+.nav-indicator{height:3px;border-radius:2px;background:#4f46e5;width:20px;transition:all .3s}
+
+/* ── Pages ── */
+.page{display:none}.page.active{display:block}
+
+/* ── Cards ── */
+.card{background:#fff;border-radius:20px;padding:16px;box-shadow:0 2px 12px rgba(79,70,229,.06);border:1px solid #f1f5f9}
+.card-primary{background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:20px;padding:20px;color:#fff}
+
+/* ── Status badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.badge-green{background:#dcfce7;color:#15803d}
+.badge-amber{background:#fef3c7;color:#92400e}
+.badge-red{background:#fee2e2;color:#991b1b}
+.badge-blue{background:#dbeafe;color:#1d4ed8}
+.badge-slate{background:#f1f5f9;color:#475569}
+
+/* ── Bill items ── */
+.bill-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff}
+.bill-row:last-child{border-bottom:none}
+.bill-total{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f0f9ff;border-radius:14px;margin-top:8px}
+
+/* ── File upload ── */
+.upload-zone{border:2px dashed #c7d2fe;border-radius:16px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
+.upload-zone:hover,.upload-zone.has-file{border-color:#4f46e5;background:#eef2ff}
+
+/* ── Repair priority ── */
+.priority-card{border:2px solid #e2e8f0;border-radius:14px;padding:10px;cursor:pointer;text-align:center;transition:all .2s}
+.priority-card.selected{border-color:#4f46e5;background:#eef2ff}
+
+/* ── Animations ── */
+.slide-up{animation:slideUp .35s cubic-bezier(.16,1,.3,1) both}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .25s ease both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* ── Skeleton ── */
+.sk{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:sk 1.5s infinite;border-radius:8px}
+@keyframes sk{0%{background-position:-200% 0}100%{background-position:200% 0}}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:88px;left:50%;transform:translateX(-50%) translateY(60px);z-index:999;padding:10px 20px;border-radius:14px;font-size:13px;font-weight:700;color:#fff;background:#1e293b;transition:all .3s;pointer-events:none;white-space:nowrap;opacity:0}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+
+/* ── Pull refresh indicator ── */
+.refresh-icon{width:20px;height:20px;stroke:#4f46e5;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div id="app-header" class="bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3 shadow-sm">
+    <div class="flex items-center gap-2.5 flex-1 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-base shrink-0">🏠</div>
+        <div class="min-w-0">
+            <div id="h-dorm-name" class="font-black text-slate-800 text-sm truncate sk" style="width:120px;height:18px"></div>
+            <div id="h-room-no" class="text-xs text-slate-400 mt-0.5 sk" style="width:80px;height:12px;margin-top:4px"></div>
+        </div>
+    </div>
+    <div class="relative shrink-0">
+        <img id="h-avatar" src="" class="w-9 h-9 rounded-full object-cover border-2 border-indigo-200 hidden"/>
+        <div id="h-avatar-sk" class="w-9 h-9 rounded-full sk"></div>
+    </div>
+</div>
+
+<!-- ── Body ── -->
+<div id="app-body" class="px-4 pt-4 space-y-4">
+
+    <!-- PAGE: Home -->
+    <div class="page active space-y-4" id="page-home">
+        <!-- Bill card -->
+        <div id="home-bill-card" class="card-primary slide-up">
+            <div class="text-xs font-bold opacity-70 mb-1">ยอดที่ต้องชำระ</div>
+            <div id="home-amount" class="text-3xl font-black mb-1">฿ —</div>
+            <div id="home-due" class="text-xs opacity-80 mb-4">กำลังโหลด...</div>
+            <button onclick="switchPage('bill')" id="home-pay-btn" class="hidden w-full py-2.5 bg-white text-indigo-600 rounded-2xl font-black text-sm active:scale-95 transition-all">
+                💳 ชำระเลย
+            </button>
+            <div id="home-paid-badge" class="hidden text-center py-2 bg-white/20 rounded-2xl text-sm font-bold">✅ ชำระแล้วเดือนนี้</div>
+        </div>
+        <!-- Contract card -->
+        <div class="card slide-up" style="animation-delay:.05s">
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">📄 สัญญาเช่า</div>
+            <div id="contract-info" class="space-y-2">
+                <div class="sk h-5 w-full"></div>
+                <div class="sk h-5 w-3/4"></div>
+            </div>
+        </div>
+        <!-- Announcements -->
+        <div class="card slide-up" style="animation-delay:.1s">
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">📢 ประกาศ</div>
+            <div id="announcements-list">
+                <div class="sk h-12 w-full rounded-xl"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAGE: Bill -->
+    <div class="page space-y-4" id="page-bill">
+        <div class="flex items-center justify-between">
+            <h2 class="font-black text-slate-800 text-base">💰 บิลรายเดือน</h2>
+            <select id="bill-month-sel" onchange="loadBill()" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold bg-white focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+        </div>
+        <div id="bill-content">
+            <div class="card"><div class="sk h-48 w-full rounded-xl"></div></div>
+        </div>
+    </div>
+
+    <!-- PAGE: History -->
+    <div class="page space-y-4" id="page-history">
+        <h2 class="font-black text-slate-800 text-base">📋 ประวัติการชำระ</h2>
+        <div id="history-content" class="space-y-3">
+            <div class="sk h-16 w-full rounded-2xl"></div>
+            <div class="sk h-16 w-full rounded-2xl"></div>
+            <div class="sk h-16 w-full rounded-2xl"></div>
+        </div>
+    </div>
+
+    <!-- PAGE: Repair -->
+    <div class="page space-y-4" id="page-repair">
+        <h2 class="font-black text-slate-800 text-base">🔧 แจ้งซ่อม</h2>
+        <!-- Form -->
+        <div class="card space-y-4">
+            <div>
+                <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">ประเภทปัญหา</label>
+                <div class="grid grid-cols-3 gap-2" id="repair-categories">
+                    <button data-cat="electric"     onclick="selectCat(this)" class="repair-cat-btn p-2.5 border-2 border-slate-200 rounded-2xl text-center transition-all hover:border-indigo-300"><div class="text-xl">⚡</div><div class="text-[11px] font-bold text-slate-600 mt-0.5">ไฟฟ้า</div></button>
+                    <button data-cat="water"        onclick="selectCat(this)" class="repair-cat-btn p-2.5 border-2 border-slate-200 rounded-2xl text-center transition-all hover:border-indigo-300"><div class="text-xl">🚿</div><div class="text-[11px] font-bold text-slate-600 mt-0.5">น้ำประปา</div></button>
+                    <button data-cat="ac"           onclick="selectCat(this)" class="repair-cat-btn p-2.5 border-2 border-slate-200 rounded-2xl text-center transition-all hover:border-indigo-300"><div class="text-xl">❄️</div><div class="text-[11px] font-bold text-slate-600 mt-0.5">แอร์</div></button>
+                    <button data-cat="door"         onclick="selectCat(this)" class="repair-cat-btn p-2.5 border-2 border-slate-200 rounded-2xl text-center transition-all hover:border-indigo-300"><div class="text-xl">🚪</div><div class="text-[11px] font-bold text-slate-600 mt-0.5">ประตู/ล็อค</div></button>
+                    <button data-cat="window"       onclick="selectCat(this)" class="repair-cat-btn p-2.5 border-2 border-slate-200 rounded-2xl text-center transition-all hover:border-indigo-300"><div class="text-xl">🪟</div><div class="text-[11px] font-bold text-slate-600 mt-0.5">หน้าต่าง</div></button>
+                    <button data-cat="other"        onclick="selectCat(this)" class="repair-cat-btn p-2.5 border-2 border-slate-200 rounded-2xl text-center transition-all hover:border-indigo-300"><div class="text-xl">📝</div><div class="text-[11px] font-bold text-slate-600 mt-0.5">อื่นๆ</div></button>
+                </div>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">ความเร่งด่วน</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="priority-card selected" data-priority="normal" onclick="selectPriority(this)"><div class="text-lg">🟡</div><div class="text-[11px] font-bold text-slate-600">ปกติ</div></div>
+                    <div class="priority-card" data-priority="high" onclick="selectPriority(this)"><div class="text-lg">🔴</div><div class="text-[11px] font-bold text-slate-600">เร่งด่วน</div></div>
+                    <div class="priority-card" data-priority="urgent" onclick="selectPriority(this)"><div class="text-lg">🚨</div><div class="text-[11px] font-bold text-slate-600">ฉุกเฉิน</div></div>
+                </div>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">รายละเอียด *</label>
+                <textarea id="repair-desc" rows="3" placeholder="อธิบายปัญหาที่พบ..." class="w-full border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm focus:border-indigo-400 outline-none resize-none transition-all"></textarea>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">แนบรูป (ไม่บังคับ)</label>
+                <div class="upload-zone" onclick="document.getElementById('repair-img').click()">
+                    <div id="repair-img-ph"><div class="text-3xl mb-1">📸</div><div class="text-xs font-bold text-indigo-400">แตะเพื่อเพิ่มรูป</div></div>
+                    <img id="repair-img-preview" src="" class="hidden max-h-28 rounded-xl mx-auto"/>
+                </div>
+                <input id="repair-img" type="file" accept="image/*" class="hidden" onchange="onRepairImg(this)"/>
+            </div>
+            <button onclick="submitRepair()" class="w-full py-3.5 rounded-2xl font-black text-base text-white active:scale-95 transition-all" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);box-shadow:0 4px 20px rgba(79,70,229,.4)">
+                📤 ส่งแจ้งซ่อม
+            </button>
+        </div>
+        <!-- My Repairs -->
+        <div>
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">คำร้องของฉัน</div>
+            <div id="my-repairs" class="space-y-2">
+                <div class="sk h-16 rounded-2xl"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAGE: Profile -->
+    <div class="page space-y-4" id="page-profile">
+        <h2 class="font-black text-slate-800 text-base">👤 ข้อมูลของฉัน</h2>
+        <div id="profile-content">
+            <div class="card"><div class="sk h-48 w-full rounded-xl"></div></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Bottom Nav ── -->
+<div id="app-nav" class="bg-white border-t border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,.06)]">
+    <div class="flex">
+        <button class="nav-tab active" data-page="home" onclick="switchPage('home',this)">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span class="nav-label">หน้าหลัก</span>
+        </button>
+        <button class="nav-tab" data-page="bill" onclick="switchPage('bill',this)">
+            <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <span class="nav-label">บิล</span>
+        </button>
+        <button class="nav-tab" data-page="history" onclick="switchPage('history',this)">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span class="nav-label">ประวัติ</span>
+        </button>
+        <button class="nav-tab" data-page="repair" onclick="switchPage('repair',this)">
+            <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span class="nav-label">แจ้งซ่อม</span>
+        </button>
+        <button class="nav-tab" data-page="profile" onclick="switchPage('profile',this)">
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span class="nav-label">ฉัน</span>
+        </button>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ==========================================
+// CONFIG
+// ==========================================
+const SUPABASE_URL      = "https://fadmzxczlblixvrekeck.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZG16eGN6bGJsaXh2cmVrZWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NjQ2MjAsImV4cCI6MjA5NDQ0MDYyMH0.JuU4w1mioRJFw5l5yEz-oB71NHo2qPgVyR2mFUqURvY";
+const API_BASE          = SUPABASE_URL + "/functions/v1/line-webhook";
+
+// ==========================================
+// STATE
+// ==========================================
+const masterDb  = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let tenantDb    = null;
+let tenantId    = null;
+let userId      = null;
+let dormCfg     = {};
+let services    = [];
+let tenantData  = null;
+let contractData= null;
+let currentBill = null;
+let repairCat   = null;
+let repairPriority = 'normal';
+let repairFile  = null;
+const MONTHS    = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+// ==========================================
+// INIT
+// ==========================================
+async function init() {
+    const search = new URLSearchParams(window.location.search);
+    const preTid = search.get('tid');
+    if (preTid) sessionStorage.setItem('dorm_tid', preTid);
+    tenantId = preTid || sessionStorage.getItem('dorm_tid')
+        || (() => { try { return new URLSearchParams(search.get('liff.state')||'').get('tid'); } catch(e){ return null; } })();
+
+    if (!tenantId) { showError('ไม่พบ Tenant ID'); return; }
+
+    await loadTenantConfig();
+
+    // LIFF init
+    try {
+        const liffId = dormCfg.liff_id || "2010149929-DORM0000";
+        await liff.init({ liffId });
+        if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
+        const profile = await liff.getProfile();
+        userId = profile.userId;
+
+        // แสดง avatar
+        const av = document.getElementById('h-avatar');
+        const sk = document.getElementById('h-avatar-sk');
+        if (profile.pictureUrl) {
+            av.src = profile.pictureUrl;
+            av.onload = () => { av.classList.remove('hidden'); sk.classList.add('hidden'); };
+        }
+    } catch(e) { userId = 'U_DEV_DORM'; }
+
+    await loadUserData();
+}
+
+async function loadTenantConfig() {
+    const { data: tenant } = await masterDb
+        .from('saas_tenants').select('name, supabase_url, supabase_service_key')
+        .eq('id', tenantId).maybeSingle();
+    if (!tenant) { showError('ไม่พบ Tenant'); return; }
+
+    tenantDb = (tenant.supabase_url && tenant.supabase_service_key)
+        ? window.supabase.createClient(tenant.supabase_url, tenant.supabase_service_key)
+        : masterDb;
+
+    const { data: cfgData }  = await tenantDb.from('dorm_config').select('value').eq('key','general').maybeSingle();
+    const { data: svcData }  = await tenantDb.from('dorm_config').select('value').eq('key','services').maybeSingle();
+    dormCfg  = cfgData?.value  || {};
+    services = svcData?.value  || [];
+
+    const el = document.getElementById('h-dorm-name');
+    el.textContent = dormCfg.dorm_name || tenant.name || 'หอพัก';
+    el.style = '';
+}
+
+async function loadUserData() {
+    // หาผู้เช่า
+    const { data: t } = await tenantDb.from('dorm_tenants')
+        .select('*').eq('line_user_id', userId).eq('status','active').maybeSingle();
+    tenantData = t;
+
+    if (!tenantData) {
+        showNotRegistered();
+        return;
+    }
+
+    // แสดง room no
+    const rEl = document.getElementById('h-room-no');
+    rEl.textContent = 'ห้อง ' + tenantData.room_no;
+    rEl.style = '';
+
+    // หาสัญญา
+    const { data: c } = await tenantDb.from('dorm_contracts')
+        .select('*').eq('tenant_id', tenantData.id).eq('status','active').maybeSingle();
+    contractData = c;
+
+    await Promise.all([loadHome(), loadBillOptions(), loadRepairs()]);
+}
+
+// ==========================================
+// HOME
+// ==========================================
+async function loadHome() {
+    const now = new Date();
+    const year = now.getFullYear() + 543;
+    const month = now.getMonth() + 1;
+
+    // บิลเดือนนี้
+    const { data: bill } = await tenantDb.from('dorm_bills')
+        .select('*').eq('room_no', tenantData.room_no)
+        .eq('bill_year', year).eq('bill_month', month).maybeSingle();
+    currentBill = bill;
+
+    const amountEl = document.getElementById('home-amount');
+    const dueEl    = document.getElementById('home-due');
+    const payBtn   = document.getElementById('home-pay-btn');
+    const paidBadge= document.getElementById('home-paid-badge');
+
+    if (bill) {
+        amountEl.textContent = '฿ ' + bill.total_amount.toLocaleString();
+        const due = bill.due_date ? new Date(bill.due_date).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'}) : '-';
+        dueEl.textContent = 'ครบกำหนด ' + due;
+        if (bill.status === 'paid') {
+            paidBadge.classList.remove('hidden');
+        } else {
+            payBtn.classList.remove('hidden');
+        }
+    } else {
+        amountEl.textContent = '— ยังไม่มีบิล —';
+        dueEl.textContent = 'เดือน ' + MONTHS[month-1] + ' ' + year;
+    }
+
+    // สัญญา
+    const cEl = document.getElementById('contract-info');
+    if (contractData) {
+        const end  = new Date(contractData.end_date);
+        const diff = Math.ceil((end - new Date()) / 86400000);
+        const endStr = end.toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
+        const urgency = diff < 30 ? 'text-rose-500' : diff < 90 ? 'text-amber-500' : 'text-slate-600';
+        cEl.innerHTML = '<div class="flex justify-between text-sm"><span class="text-slate-400">ห้อง</span><span class="font-bold">' + contractData.room_no + '</span></div>'
+            + '<div class="flex justify-between text-sm"><span class="text-slate-400">หมดสัญญา</span><span class="font-bold">' + endStr + '</span></div>'
+            + '<div class="flex justify-between text-sm"><span class="text-slate-400">คงเหลือ</span><span class="font-bold ' + urgency + '">' + (diff > 0 ? diff + ' วัน' : '⚠️ หมดแล้ว') + '</span></div>';
+    } else {
+        cEl.innerHTML = '<div class="text-sm text-slate-400 text-center py-2">ไม่พบสัญญาที่ active</div>';
+    }
+
+    // ประกาศ
+    const aEl = document.getElementById('announcements-list');
+    const { data: ann } = await tenantDb.from('dorm_announcements')
+        .select('*').eq('is_active', true).order('is_pinned',{ascending:false}).order('created_at',{ascending:false}).limit(3);
+    if (ann && ann.length) {
+        aEl.innerHTML = ann.map(a => '<div class="flex items-start gap-2.5 py-2.5 border-b border-slate-50 last:border-b-0">'
+            + '<div class="text-lg shrink-0">' + (a.is_pinned ? '📌' : '📢') + '</div>'
+            + '<div><div class="text-sm font-bold text-slate-800">' + escHtml(a.title) + '</div>'
+            + '<div class="text-xs text-slate-400 mt-0.5">' + new Date(a.created_at).toLocaleDateString('th-TH') + '</div></div>'
+            + '</div>').join('');
+    } else {
+        aEl.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">ไม่มีประกาศ</div>';
+    }
+}
+
+// ==========================================
+// BILL
+// ==========================================
+function loadBillOptions() {
+    const sel = document.getElementById('bill-month-sel');
+    const now = new Date();
+    const yearTH = now.getFullYear() + 543;
+    const month  = now.getMonth() + 1;
+    sel.innerHTML = '';
+    for (let i = 0; i < 6; i++) {
+        let m = month - i;
+        let y = yearTH;
+        if (m <= 0) { m += 12; y--; }
+        const opt = document.createElement('option');
+        opt.value = y + '-' + m;
+        opt.textContent = MONTHS[m-1] + ' ' + y;
+        if (i === 0) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    loadBill();
+}
+
+async function loadBill() {
+    if (!tenantData || !tenantDb) return;
+    const [year, month] = document.getElementById('bill-month-sel').value.split('-').map(Number);
+    const el = document.getElementById('bill-content');
+    el.innerHTML = '<div class="card"><div class="sk h-48 w-full rounded-xl"></div></div>';
+
+    const { data: bill } = await tenantDb.from('dorm_bills')
+        .select('*').eq('room_no', tenantData.room_no)
+        .eq('bill_year', year).eq('bill_month', month).maybeSingle();
+
+    if (!bill) {
+        el.innerHTML = '<div class="card text-center py-8"><div class="text-4xl mb-2">📭</div><div class="text-slate-400 text-sm">ยังไม่มีบิลเดือนนี้</div></div>';
+        return;
+    }
+
+    const items = bill.items || [];
+    const statusBadge = bill.status === 'paid'
+        ? '<span class="badge badge-green">✅ ชำระแล้ว</span>'
+        : bill.status === 'overdue'
+        ? '<span class="badge badge-red">⚠️ เกินกำหนด</span>'
+        : '<span class="badge badge-amber">⏳ รอชำระ</span>';
+
+    // ตรวจว่ามี payment pending ไหม
+    const { data: payment } = await tenantDb.from('dorm_payments')
+        .select('*').eq('bill_id', bill.id).eq('status','pending').maybeSingle();
+
+    el.innerHTML = '<div class="card space-y-1">'
+        + '<div class="flex justify-between items-center mb-3">'
+        + '<div class="font-black text-slate-800">' + MONTHS[month-1] + ' ' + year + '</div>'
+        + statusBadge
+        + '</div>'
+        + items.map(it => '<div class="bill-row">'
+            + '<div><div class="text-sm font-semibold text-slate-700">' + escHtml(it.label) + '</div>'
+            + (it.units ? '<div class="text-[11px] text-slate-400">' + (it.prev||0) + ' → ' + (it.curr||0) + ' (' + it.units + ' หน่วย × ' + it.rate + ' บ.)</div>' : '')
+            + '</div>'
+            + '<div class="font-black text-slate-800 text-sm">' + (it.amount||0).toLocaleString() + ' ฿</div>'
+            + '</div>').join('')
+        + '<div class="bill-total"><span class="font-black text-slate-800">รวมทั้งหมด</span><span class="text-xl font-black text-indigo-600">' + bill.total_amount.toLocaleString() + ' ฿</span></div>'
+        + '</div>'
+        + (bill.status !== 'paid' && !payment ? '<div class="card space-y-3">'
+            + '<div class="text-xs font-bold text-slate-400 uppercase tracking-wider">ชำระผ่าน PromptPay</div>'
+            + (dormCfg.promptpay_no ? '<div class="p-3 bg-indigo-50 rounded-2xl text-center"><div class="font-black text-indigo-600 text-lg">' + dormCfg.promptpay_no + '</div><div class="text-xs text-slate-400">' + (dormCfg.promptpay_name||'') + '</div></div>' : '')
+            + '<div class="upload-zone" onclick="document.getElementById(\'slip-file\').click()">'
+            + '<div id="slip-ph"><div class="text-3xl mb-1">📷</div><div class="text-xs font-bold text-indigo-400">แตะเพื่อแนบสลิป</div></div>'
+            + '<img id="slip-preview" src="" class="hidden max-h-28 rounded-xl mx-auto"/>'
+            + '</div>'
+            + '<input id="slip-file" type="file" accept="image/*" class="hidden" onchange="onSlipFile(this)"/>'
+            + '<button onclick="submitPayment(' + bill.id + ',' + bill.total_amount + ')" class="w-full py-3.5 rounded-2xl font-black text-white active:scale-95 transition-all" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);box-shadow:0 4px 20px rgba(79,70,229,.4)">💳 ส่งหลักฐานชำระ</button>'
+            + '</div>'
+            : payment ? '<div class="card text-center py-4"><div class="text-2xl mb-1">⏳</div><div class="text-sm font-bold text-amber-600">รอแอดมินตรวจสอบ</div><div class="text-xs text-slate-400 mt-0.5">ส่งสลิปเมื่อ ' + new Date(payment.created_at).toLocaleDateString('th-TH') + '</div></div>'
+            : '');
+}
+
+// ==========================================
+// PAYMENT
+// ==========================================
+let slipFile = null;
+function onSlipFile(input) {
+    if (!input.files[0]) return;
+    slipFile = input.files[0];
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById('slip-preview');
+        const ph   = document.getElementById('slip-ph');
+        prev.src = e.target.result;
+        prev.classList.remove('hidden');
+        ph.classList.add('hidden');
+        document.getElementById('slip-file').closest('.upload-zone').classList.add('has-file');
+    };
+    reader.readAsDataURL(slipFile);
+}
+
+async function submitPayment(billId, amount) {
+    if (!slipFile) { toast('⚠️ กรุณาแนบสลิปก่อน'); return; }
+
+    const btn = event.target;
+    btn.disabled = true; btn.textContent = '⏳ กำลังส่ง...';
+
+    let slipUrl = '';
+    if (slipFile && tenantDb) {
+        const fn = `dorm/slips/${tenantData.room_no}/${Date.now()}.${slipFile.name.split('.').pop()}`;
+        const { error } = await tenantDb.storage.from('uploads').upload(fn, slipFile, { upsert: true });
+        if (!error) {
+            const { data: { publicUrl } } = tenantDb.storage.from('uploads').getPublicUrl(fn);
+            slipUrl = publicUrl;
+        }
+    }
+
+    await tenantDb.from('dorm_payments').insert({
+        bill_id: billId, room_no: tenantData.room_no,
+        tenant_id: tenantData.id, amount, slip_url: slipUrl, status: 'pending'
+    });
+
+    // liff.sendMessages แจ้งบอท → บอท reply + Telegram admin
+    const notifyText = `DORM_PAYMENT|${tenantData.room_no}|${tenantData.full_name}|${amount}`;
+    try {
+        if (liff.isInClient()) await liff.sendMessages([{ type: 'text', text: notifyText }]);
+    } catch(e) {
+        await fetch(`${API_BASE}/api/dorm/notify?tid=${tenantId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+            body: JSON.stringify({ userId, roomNo: tenantData.room_no, name: tenantData.full_name, amount })
+        }).catch(() => {});
+    }
+
+    slipFile = null;
+    toast('✅ ส่งสำเร็จ! รอแอดมินตรวจสอบ');
+    loadBill();
+}
+
+// ==========================================
+// HISTORY
+// ==========================================
+async function loadHistory() {
+    if (!tenantData || !tenantDb) return;
+    const el = document.getElementById('history-content');
+    const { data } = await tenantDb.from('dorm_payments')
+        .select('*, dorm_bills(bill_year,bill_month,total_amount)')
+        .eq('room_no', tenantData.room_no)
+        .order('created_at', { ascending: false }).limit(12);
+
+    if (!data || !data.length) {
+        el.innerHTML = '<div class="card text-center py-8"><div class="text-3xl mb-2">📭</div><div class="text-slate-400 text-sm">ยังไม่มีประวัติ</div></div>';
+        return;
+    }
+
+    const statusMap = {
+        approved: { badge: 'badge-green', label: '✅ ชำระแล้ว' },
+        pending:  { badge: 'badge-amber', label: '⏳ รอตรวจสอบ' },
+        rejected: { badge: 'badge-red',   label: '❌ ไม่อนุมัติ' },
+    };
+
+    el.innerHTML = data.map(p => {
+        const bill = p.dorm_bills;
+        const billLabel = bill ? MONTHS[bill.bill_month-1] + ' ' + bill.bill_year : '-';
+        const s = statusMap[p.status] || { badge: 'badge-slate', label: p.status };
+        return '<div class="card flex items-center gap-3">'
+            + '<div class="w-11 h-11 rounded-2xl shrink-0 flex items-center justify-center text-xs font-black" style="background:#eef2ff;color:#4f46e5">' + billLabel.slice(0,3) + '</div>'
+            + '<div class="flex-1 min-w-0"><div class="font-bold text-slate-800 text-sm">' + billLabel + '</div>'
+            + '<div class="text-xs text-slate-400">' + new Date(p.created_at).toLocaleDateString('th-TH') + '</div>'
+            + (p.admin_note ? '<div class="text-xs text-slate-500 italic mt-0.5">"' + escHtml(p.admin_note) + '"</div>' : '')
+            + '</div>'
+            + '<div class="text-right shrink-0">'
+            + '<div class="font-black text-slate-800 text-sm">' + p.amount.toLocaleString() + ' ฿</div>'
+            + '<span class="badge ' + s.badge + ' text-[10px] mt-0.5">' + s.label + '</span>'
+            + '</div></div>';
+    }).join('');
+}
+
+// ==========================================
+// REPAIR
+// ==========================================
+function selectCat(btn) {
+    document.querySelectorAll('.repair-cat-btn').forEach(b => b.className = b.className.replace('border-indigo-400 bg-indigo-50','border-slate-200'));
+    btn.className = btn.className.replace('border-slate-200','border-indigo-400 bg-indigo-50');
+    repairCat = btn.dataset.cat;
+}
+
+function selectPriority(el) {
+    document.querySelectorAll('.priority-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    repairPriority = el.dataset.priority;
+}
+
+function onRepairImg(input) {
+    if (!input.files[0]) return;
+    repairFile = input.files[0];
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('repair-img-preview').src = e.target.result;
+        document.getElementById('repair-img-preview').classList.remove('hidden');
+        document.getElementById('repair-img-ph').classList.add('hidden');
+    };
+    reader.readAsDataURL(repairFile);
+}
+
+async function loadRepairs() {
+    if (!userId || !tenantDb) return;
+    const el = document.getElementById('my-repairs');
+    const { data } = await tenantDb.from('dorm_repairs')
+        .select('*').eq('line_user_id', userId)
+        .order('created_at',{ascending:false}).limit(5);
+
+    const statusMap = {
+        open:        { badge: 'badge-amber', label: '🔔 รอดำเนินการ' },
+        in_progress: { badge: 'badge-blue',  label: '🔧 กำลังซ่อม' },
+        done:        { badge: 'badge-green', label: '✅ เสร็จแล้ว' },
+        closed:      { badge: 'badge-slate', label: '🔒 ปิดงาน' },
+    };
+    const catIcon = { electric:'⚡', water:'🚿', ac:'❄️', door:'🚪', window:'🪟', other:'📝' };
+
+    if (!data || !data.length) {
+        el.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">ยังไม่มีคำร้อง</div>';
+        return;
+    }
+
+    el.innerHTML = data.map(r => {
+        const s = statusMap[r.status] || { badge:'badge-slate', label:r.status };
+        return '<div class="card flex items-start gap-3">'
+            + '<div class="text-xl shrink-0 mt-0.5">' + (catIcon[r.category]||'📝') + '</div>'
+            + '<div class="flex-1 min-w-0">'
+            + '<div class="font-bold text-slate-800 text-sm">' + escHtml(r.title) + '</div>'
+            + '<div class="text-xs text-slate-400 mt-0.5">' + new Date(r.created_at).toLocaleDateString('th-TH') + '</div>'
+            + (r.admin_note ? '<div class="text-xs text-slate-500 italic mt-0.5 bg-slate-50 p-2 rounded-xl">"' + escHtml(r.admin_note) + '"</div>' : '')
+            + '</div>'
+            + '<span class="badge ' + s.badge + ' text-[10px] shrink-0">' + s.label + '</span>'
+            + '</div>';
+    }).join('');
+}
+
+async function submitRepair() {
+    const desc = document.getElementById('repair-desc').value.trim();
+    if (!repairCat) { toast('⚠️ เลือกประเภทปัญหาก่อน'); return; }
+    if (!desc)      { toast('⚠️ กรอกรายละเอียดก่อน');  return; }
+
+    let imageUrl = '';
+    if (repairFile && tenantDb) {
+        const fn = `dorm/repairs/${tenantData?.room_no||userId}/${Date.now()}.${repairFile.name.split('.').pop()}`;
+        const { error } = await tenantDb.storage.from('uploads').upload(fn, repairFile, { upsert: true });
+        if (!error) {
+            const { data: { publicUrl } } = tenantDb.storage.from('uploads').getPublicUrl(fn);
+            imageUrl = publicUrl;
+        }
+    }
+
+    const catLabel = { electric:'ไฟฟ้า', water:'น้ำประปา', ac:'แอร์', door:'ประตู/ล็อค', window:'หน้าต่าง', other:'อื่นๆ' };
+    const { error } = await tenantDb.from('dorm_repairs').insert({
+        room_no: tenantData?.room_no || '-',
+        tenant_id: tenantData?.id || null,
+        line_user_id: userId,
+        category: repairCat,
+        title: catLabel[repairCat] || 'แจ้งซ่อม',
+        description: desc,
+        priority: repairPriority,
+        image_url: imageUrl,
+        status: 'open'
+    });
+
+    if (error) { toast('❌ ' + error.message); return; }
+
+    // แจ้ง Telegram admin
+    await fetch(`${API_BASE}/api/dorm/repair-notify?tid=${tenantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+        body: JSON.stringify({
+            roomNo: tenantData?.room_no, name: tenantData?.full_name,
+            category: catLabel[repairCat], priority: repairPriority, desc
+        })
+    }).catch(() => {});
+
+    toast('✅ แจ้งซ่อมสำเร็จ!');
+    document.getElementById('repair-desc').value = '';
+    repairCat = null; repairFile = null;
+    document.querySelectorAll('.repair-cat-btn').forEach(b => b.className = b.className.replace('border-indigo-400 bg-indigo-50','border-slate-200'));
+    document.getElementById('repair-img-preview').classList.add('hidden');
+    document.getElementById('repair-img-ph').classList.remove('hidden');
+    await loadRepairs();
+}
+
+// ==========================================
+// PROFILE
+// ==========================================
+async function loadProfile() {
+    if (!tenantData) return;
+    const el = document.getElementById('profile-content');
+    const end  = contractData ? new Date(contractData.end_date) : null;
+    const endStr = end ? end.toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'}) : '-';
+
+    el.innerHTML = '<div class="card space-y-3">'
+        + '<div class="flex items-center gap-3 pb-3" style="border-bottom:1px solid #f1f5f9">'
+        + '<img src="' + (liff.isInClient() ? '' : '') + '" id="profile-pic" class="w-12 h-12 rounded-full object-cover border-2 border-indigo-200" />'
+        + '<div><div class="font-black text-slate-800">' + escHtml(tenantData.full_name) + '</div>'
+        + '<div class="text-xs text-indigo-600 font-bold">ห้อง ' + tenantData.room_no + '</div></div>'
+        + '</div>'
+        + '<div class="space-y-2">'
+        + profileRow('📞 เบอร์โทร', tenantData.phone || '-')
+        + profileRow('📧 Email',    tenantData.email || '-')
+        + profileRow('📄 สัญญา',   contractData ? 'ถึง ' + endStr : 'ไม่พบสัญญา')
+        + profileRow('💰 มัดจำ',   contractData ? (contractData.deposit||0).toLocaleString() + ' บาท' : '-')
+        + '</div>'
+        + '<button onclick="editProfile()" class="w-full py-3 border-2 border-indigo-200 text-indigo-600 rounded-2xl font-bold text-sm active:scale-95 transition-all">✏️ แก้ไขข้อมูลติดต่อ</button>'
+        + '</div>';
+
+    // ใส่รูป avatar
+    const picEl = document.getElementById('profile-pic');
+    try {
+        const profile = await liff.getProfile();
+        if (profile.pictureUrl) picEl.src = profile.pictureUrl;
+    } catch(e) { picEl.src = 'https://cdn-icons-png.flaticon.com/512/847/847966.png'; }
+}
+
+function profileRow(label, value) {
+    return '<div class="flex justify-between items-center py-1">'
+        + '<span class="text-sm text-slate-400">' + label + '</span>'
+        + '<span class="text-sm font-bold text-slate-700">' + escHtml(String(value)) + '</span>'
+        + '</div>';
+}
+
+function editProfile() {
+    toast('🚧 ฟีเจอร์นี้กำลังพัฒนา');
+}
+
+// ==========================================
+// NAVIGATION
+// ==========================================
+function switchPage(page, btn) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    if (btn) btn.classList.add('active');
+    else document.querySelector('[data-page="' + page + '"]').classList.add('active');
+
+    // Lazy load
+    if (page === 'history') loadHistory();
+    if (page === 'profile') loadProfile();
+    if (page === 'bill')    loadBill();
+}
+
+// ==========================================
+// NOT REGISTERED
+// ==========================================
+function showNotRegistered() {
+    document.getElementById('app-body').innerHTML = '<div class="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">'
+        + '<div class="text-6xl mb-4">🏠</div>'
+        + '<h2 class="text-xl font-black text-slate-800 mb-2">ยังไม่มีข้อมูลในระบบ</h2>'
+        + '<p class="text-sm text-slate-400 mb-6">กรุณาติดต่อแอดมินเพื่อลงทะเบียน<br>หรือกดแจ้งข้อมูลด้านล่าง</p>'
+        + '<a href="https://lin.ee/" class="py-3 px-8 rounded-2xl font-bold text-white text-sm" style="background:linear-gradient(135deg,#4f46e5,#7c3aed)">📞 ติดต่อแอดมิน</a>'
+        + '</div>';
+}
+
+function showError(msg) {
+    document.body.innerHTML = '<div class="min-h-screen flex items-center justify-center p-8 text-center">'
+        + '<div><div class="text-6xl mb-4">😅</div><h2 class="text-xl font-black text-slate-800 mb-2">เกิดข้อผิดพลาด</h2><p class="text-slate-400 text-sm">' + msg + '</p></div></div>';
+}
+
+// ==========================================
+// HELPERS
+// ==========================================
+function toast(msg, dur = 3000) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), dur);
+}
+
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// START
+init();
+</script>
+</body>
+</html>
